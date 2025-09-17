@@ -1,22 +1,17 @@
-# --- Core app framework ---
+# --- Core app ---
 streamlit>=1.36.0
 
 # --- OpenAI SDK ---
 openai>=1.40.0
 
-# --- LangChain modern packages (post 0.2.0) ---
-langchain-community>=0.2.10
-langchain-openai>=0.2.5
+# --- LangChain (modern split) ---
+langchain-community>=0.3.25
+langchain-openai>=0.3.30
 
-# --- FAISS vectorstore (works on Streamlit Cloud with Py 3.11) ---
-faiss-cpu==1.8.0.post1
+# --- FAISS (Py 3.13 compatible) ---
+faiss-cpu==1.12.0
 
-# --- Fuzzy matching for name lookups ---
+# --- Utilities ---
 rapidfuzz>=3.9.7
-
-# --- Data parsing / structured data ---
-pandas>=2.2.2
-
-# --- Optional but recommended ---
-tqdm             # For progress bars if needed
-python-dotenv    # For local .env support
+pandas>=2.3.2
+python-dotenv>=1.0.1
