@@ -43,9 +43,9 @@ for r in range(len(data['data'])):
     
 #print(company_list)
 
-os.environ["OPENAI_API_KEY"] = "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"
-os.environ["OPENAI_API_KEY"] = "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"
-embedding = OpenAIEmbeddings()
+key = os.getenv("OPENAI_API_KEY")
+if not key:
+    raise RuntimeError("Set OPENAI_API_KEY in your environment (locally: .env or PowerShell; cloud: Secrets).")embedding = OpenAIEmbeddings()
 
 client = OpenAI()
 
@@ -551,5 +551,6 @@ try:
     unified_answer(user_input)
 except Exception as e:
     print(f"Error: {e}")
+
 
 
