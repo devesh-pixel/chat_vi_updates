@@ -45,7 +45,7 @@ for r in range(len(data['data'])):
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not key:
+if not OPENAI_API_KEY:
     raise RuntimeError("Set OPENAI_API_KEY in your environment (locally: .env or PowerShell; cloud: Secrets).")
     
 embedding = OpenAIEmbeddings()
@@ -554,6 +554,7 @@ try:
     unified_answer(user_input)
 except Exception as e:
     print(f"Error: {e}")
+
 
 
 
