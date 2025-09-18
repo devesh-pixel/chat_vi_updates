@@ -548,14 +548,18 @@ Do not guess numbers. Always cite facts from the data.
     return resp2.choices[0].message.content
     print(resp2.choices[0].message.content)
 
+print("all functions processed, waiting for UI")
 
 user_input = input("\n\n>>Enter your question: ")
 print("working on your query\n\n")
+
+
 
 try:
     unified_answer(user_input)
 except Exception as e:
     print(f"Error: {e}")
+
 
 
 
