@@ -506,6 +506,7 @@ Do not guess numbers. Always cite facts from the data.
 
     if not tcs:
         print(msg1.content)
+        print("Hey, I am trained to answer relevant queries, you can ask me something like \n Give me a summary of Rollstack for the past year \n Which companies have revenue more than $1 m")
         return
 
     msgs = [
@@ -558,6 +559,7 @@ if __name__ == "__main__":
         print(unified_answer(user_input))
     except Exception as e:
         print(f"Error: {e}")
+
 
 
 
