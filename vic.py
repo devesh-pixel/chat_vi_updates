@@ -10,6 +10,8 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.docstore.document import Document
 
+print("vic.py started")
+
 tmp_path = "investment_updates.json"
 with open(tmp_path, encoding='utf-8') as f:
     data = json.load(f)
@@ -554,6 +556,7 @@ try:
     unified_answer(user_input)
 except Exception as e:
     print(f"Error: {e}")
+
 
 
 
