@@ -44,7 +44,7 @@ for r in range(len(data['data'])):
 #print(company_list)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
+print(">> vic.py loaded")
 if not OPENAI_API_KEY:
     raise RuntimeError("Set OPENAI_API_KEY in your environment (locally: .env or PowerShell; cloud: Secrets).")
     
@@ -66,7 +66,7 @@ for item in data['data']:
 embedding_model = OpenAIEmbeddings()
 company_docs = [Document(page_content=name) for name in company_names]
 company_vs = FAISS.from_documents(company_docs, embedding_model)
-
+print("faiss done, hell yeah")
 # === Step 3: Define search function ===
 def search_company(query, k=1):
     results = company_vs.similarity_search(query, k=k)
@@ -554,6 +554,7 @@ try:
     unified_answer(user_input)
 except Exception as e:
     print(f"Error: {e}")
+
 
 
 
