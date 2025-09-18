@@ -550,15 +550,14 @@ Do not guess numbers. Always cite facts from the data.
 
 print("all functions processed, waiting for UI")
 
-user_input = input("\n\n>>Enter your question: ")
-print("working on your query\n\n")
-
-
-
-try:
-    unified_answer(user_input)
-except Exception as e:
-    print(f"Error: {e}")
+if __name__ == "__main__":
+    print("all functions processed, waiting for UI")
+    user_input = input("\n\n>>Enter your question: ")
+    print("working on your query\n\n")
+    try:
+        print(unified_answer(user_input))
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 
