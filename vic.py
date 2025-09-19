@@ -1,9 +1,14 @@
+# vic.py
 import json
 import tempfile
 import openai
 from openai import OpenAI
-import requests 
+import requests
 import os
+from pathlib import Path
+from typing import List, Dict
+
+# --- LangChain (keeping your original imports; deprecation warnings are fine) ---
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
@@ -12,83 +17,123 @@ from langchain.docstore.document import Document
 
 print("vic.py started")
 
+# =========================
+# Data load
+# =========================
 tmp_path = "investment_updates.json"
 with open(tmp_path, encoding='utf-8') as f:
     data = json.load(f)
 
-#High level company data
-
-company_list = """
-"""
+# =========================
+# Build simple high-level string (unused, preserved)
+# =========================
+company_list = ""
 for r in range(len(data['data'])):
     company = (f"Company: {data['data'][r]['companyName']}\n")
-    company_list+="--------------------------------------------------\n"
-    company_list += (f"{company}\n")
-    
-    
+    company_list += "--------------------------------------------------\n"
+    company_list += f"{company}\n"
     for update in range(len(data['data'][r]['investmentUpdates'])):
-        
         try:
             iu = data['data'][r]['investmentUpdates']
-            
-
-
             update_month = iu[update]['textualData']['update_month']
             revenue_type = iu[update]['kpis']['revenueType']
             update_revenue = iu[update]['kpis']['revenue']
             update_year = iu[update]['receivedYear']
-
-            company_data = (f"As of Date: {update_month}, {update_year} | Lastest {revenue_type}: {update_revenue}|")
-            company_list += (f"{company_data}\n")
-        except:
+            company_data = (
+                f"As of Date: {update_month}, {update_year} | Lastest {revenue_type}: {update_revenue}|"
+            )
+            company_list += f"{company_data}\n"
+        except Exception:
             continue
-    
-#print(company_list)
 
+# =========================
+# Environment / Clients
+# =========================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 print(">> vic.py loaded")
 if not OPENAI_API_KEY:
     raise RuntimeError("Set OPENAI_API_KEY in your environment (locally: .env or PowerShell; cloud: Secrets).")
-    
-embedding = OpenAIEmbeddings()
 
-client = OpenAI()
+# Explicitly pass API key (keeps old packages happy)
+embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# === Step 1: Build dictionary: company name → ID ===
-company_id_map = {}
-company_names = []
-
+# =========================
+# Company index (FAISS)
+# =========================
+# Step 1: Build dictionary: company name → ID
+company_id_map: Dict[str, str] = {}
+company_names: List[str] = []
 for item in data['data']:
     name = item['companyName']
     cid = item['id']
     company_id_map[name] = cid
     company_names.append(name)
 
-# === Step 2: Embed all company names ===
-embedding_model = OpenAIEmbeddings()
+# Step 2: Embed all company names
+embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 company_docs = [Document(page_content=name) for name in company_names]
 company_vs = FAISS.from_documents(company_docs, embedding_model)
 print("faiss done, hell yeah")
-# === Step 3: Define search function ===
+
+# Step 3: Search helpers
 def search_company(query, k=1):
     results = company_vs.similarity_search(query, k=k)
     for doc in results:
         name = doc.page_content
         company_id = company_id_map[name]
         return name, company_id
-    
+
 def get_data_from_id(cid):
     for r in range(len(data['data'])):
-
         if data['data'][r]['id'] == cid:
             return data['data'][r]
-            break
 
 def get_data_from_name(company_name):
     name, cid = search_company(company_name)
-    data = get_data_from_id(cid)
-    return data
+    return get_data_from_id(cid)
 
+# =========================
+# Memory (file-backed JSONL)
+# =========================
+MEMORY_PATH = Path("chat_memory.jsonl")
+MAX_TURNS = 8  # keep last 8 user/assistant pairs (16 messages)
+
+def _load_memory() -> List[Dict[str, str]]:
+    """
+    Returns prior messages as a list of dicts:
+    [{'role':'user','content':...}, {'role':'assistant','content':...}, ...]
+    """
+    if not MEMORY_PATH.exists():
+        return []
+    msgs: List[Dict[str, str]] = []
+    try:
+        with MEMORY_PATH.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msgs.append(json.loads(line))
+                except Exception:
+                    continue
+        # keep only the last 2*MAX_TURNS messages
+        return msgs[-(2 * MAX_TURNS):]
+    except Exception:
+        return []
+
+def _append_memory(user_text: str, assistant_text: str) -> None:
+    """Append the latest user/assistant messages to memory (best-effort)."""
+    try:
+        with MEMORY_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"role": "user", "content": user_text}, ensure_ascii=False) + "\n")
+            f.write(json.dumps({"role": "assistant", "content": assistant_text}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+# =========================
+# JSON schema string (unchanged)
+# =========================
 json_structure = """ 
 // Root
 interface Root {
@@ -405,35 +450,35 @@ interface AllPeriodWiseKpiEntry {
     runway?: number | null;
   };
 }
-
 """
 
+# =========================
+# Python-code tool (unchanged behavior)
+# =========================
 def run_python_query_on_json(query: str) -> str:
     """
-    Delegate execution to OpenAI's code interpreter using the Assistants-style Responses API.
-    Uploads your in-memory JSON (`data`) as a file and attaches it to the call.
+    Delegate execution to OpenAI's code interpreter using the Responses API.
+    Uploads in-memory JSON to a temp file and attaches it.
     """
     try:
         # Save current data to a temp file
-        tmp_path = os.path.join(tempfile.gettempdir(), "investment_data.json")
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        tpath = os.path.join(tempfile.gettempdir(), "investment_data.json")
+        with open(tpath, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
         # Upload the file
-        up = client.files.create(file=open(tmp_path, "rb"), purpose="assistants")
+        up = client.files.create(file=open(tpath, "rb"), purpose="assistants")
 
-        # Compose input: you can customize this based on user query
-        prompt = (
-            f"""
-            Use Python for this task.
-            The User query is: {query}
+        # Compose input
+        prompt = f"""
+Use Python for this task.
+The User query is: {query}
 
-            You have to use the uploaded JSON file to answer the query.
-            The structure of the JSON file is as follows:
-            {json_structure}
-            Also show what code you wrote to get the answer.
-                """
-        )
+You have to use the uploaded JSON file to answer the query.
+The structure of the JSON file is as follows:
+{json_structure}
+Also show what code you wrote to get the answer.
+        """
 
         # Call OpenAI Code Interpreter
         resp = client.responses.create(
@@ -441,20 +486,19 @@ def run_python_query_on_json(query: str) -> str:
             input=prompt,
             tools=[{
                 "type": "code_interpreter",
-                "container": {
-                    "type": "auto",
-                    "file_ids": [up.id]
-                }
+                "container": {"type": "auto", "file_ids": [up.id]}
             }]
         )
 
-        return str(resp.output_text) if resp.output_text else "[Code interpreter returned no output]"
+        return str(resp.output_text) if getattr(resp, "output_text", None) else "[Code interpreter returned no output]"
 
     except Exception as e:
         return f"[Error running Python query]: {e}"
 
+# =========================
+# Main entry: unified_answer
+# =========================
 def unified_answer(user_input: str):
-
     SYSTEM = """
 You are an analyst answering questions about startup investment updates.
 - If the user is asking about a single company, use the `get_data_from_name` function.
@@ -489,11 +533,13 @@ Do not guess numbers. Always cite facts from the data.
         }
     ]
 
+    # Include prior turns from memory before current user message
+    prior = _load_memory()
+
     # First LLM call to decide which tool to use
     resp1 = client.chat.completions.create(
         model="gpt-4o",
-        messages=[
-            {"role": "system", "content": SYSTEM},
+        messages=[{"role": "system", "content": SYSTEM}] + prior + [
             {"role": "user", "content": user_input}
         ],
         tools=tools,
@@ -505,16 +551,21 @@ Do not guess numbers. Always cite facts from the data.
     tcs = msg1.tool_calls or []
 
     if not tcs:
-        print(msg1.content)
-        print("Hey, I am trained to answer relevant queries, you can ask me something like \n Give me a summary of Rollstack for the past year \n Which companies have revenue more than $1 m")
-        return
+        fallback = msg1.content or (
+            "I'm tuned for investment‑update questions. Try:\n"
+            "• Give me a summary of Rollstack for the past year\n"
+            "• Which companies have revenue more than $1m?"
+        )
+        _append_memory(user_input, fallback)
+        return fallback
 
-    msgs = [
-        {"role": "system", "content": SYSTEM},
+    # Build message list for second call (include memory)
+    msgs: List[Dict[str, str]] = [{"role": "system", "content": SYSTEM}] + prior + [
         {"role": "user", "content": user_input},
-        msg1
+        msg1  # tool call decision message
     ]
 
+    # Execute tools and add their outputs
     for tc in tcs:
         fn_name = tc.function.name
         args = json.loads(tc.function.arguments)
@@ -546,26 +597,8 @@ Do not guess numbers. Always cite facts from the data.
         messages=msgs,
         tools=tools
     )
-    return resp2.choices[0].message.content
-    print(resp2.choices[0].message.content)
+    final_text = resp2.choices[0].message.content or ""
+    _append_memory(user_input, final_text)
+    return final_text
 
 print("all functions processed, waiting for UI")
-
-if __name__ == "__main__":
-    print("all functions processed, waiting for UI")
-    user_input = input("\n\n>>Enter your question: ")
-    print("working on your query\n\n")
-    try:
-        print(unified_answer(user_input))
-    except Exception as e:
-        print(f"Error: {e}")
-
-
-
-
-
-
-
-
-
-
